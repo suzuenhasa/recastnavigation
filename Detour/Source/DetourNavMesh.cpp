@@ -28,9 +28,11 @@
 #include <new>
 
 
+// sy is the agent height. Slabs at least that far apart are on separate floors and never
+// overlap (sy <= 0 disables this).
 inline bool overlapSlabs(const float* amin, const float* amax,
 						 const float* bmin, const float* bmax,
-						 const float px, const float py)
+						 const float px, const float py, const float sy)
 {
 	// Check for horizontal overlap.
 	// The segment is shrunken a little so that slabs which touch
@@ -55,6 +57,10 @@ inline bool overlapSlabs(const float* amin, const float* amax,
 	// Crossing segments always overlap.
 	if (dmin*dmax < 0)
 		return true;
+		
+	// An agent fits between slabs this far apart, so they are on separate floors.
+	if (sy > 0 && dtMin(dtAbs(dmin), dtAbs(dmax)) >= sy)
+		return false;
 		
 	// Check for overlap at endpoints.
 	const float thr = dtSqr(py*2);
@@ -338,7 +344,7 @@ int dtNavMesh::findConnectingPolys(const float* va, const float* vb,
 			// Check if the segments touch.
 			calcSlabEndPoints(vc, vd, bmin, bmax, side);
 			
-			if (!overlapSlabs(amin,amax, bmin,bmax, 0.01f, tile->header->walkableClimb)) continue;
+			if (!overlapSlabs(amin,amax, bmin,bmax, 0.01f, tile->header->walkableClimb, tile->header->walkableHeight)) continue;
 			
 			// Add return value.
 			if (n < maxcon)
