@@ -196,6 +196,9 @@ int main(int argc, char** argv)
 		}
 	}
 
+	dtNavMeshQuery* q = dtAllocNavMeshQuery();
+	q->init(nav, 4096);
+
 	// Every link to a polygon in another tile.
 	const dtNavMesh* cnav = nav;
 	int nlinks = 0, ntiles = 0, npolys = 0;
@@ -230,6 +233,55 @@ int main(int argc, char** argv)
 				nlinks++;
 				printf("link %d,%d p%d e%d -> %d,%d p%d side%d portal %d-%d\n", tile->header->x, tile->header->y, i, l.edge,
 					   tt->header->x, tt->header->y, static_cast<int>(tp - tt->polys), l.side, l.bmin, l.bmax);
+				if (getenv("DUMP_LINKGAP"))
+				{
+					// The end gaps overlapSlabs uses: the target edge on the opposite side that overlaps this one.
+					const float* va = &tile->verts[poly.verts[l.edge] * 3];
+					const float* vb = &tile->verts[poly.verts[(l.edge + 1) % poly.vertCount] * 3];
+					const int side = l.side;
+					const int c = (side == 0 || side == 4) ? 2 : 0;
+					const unsigned short m = DT_EXT_LINK | (unsigned short)((side + 4) % 8);
+					float best = -1, bdmin = 0, bdmax = 0;
+					for (int j = 0; j < tp->vertCount; ++j)
+					{
+						if (tp->neis[j] != m)
+							continue;
+						const float* vc = &tt->verts[tp->verts[j] * 3];
+						const float* vd = &tt->verts[tp->verts[(j + 1) % tp->vertCount] * 3];
+						const float a0[2] = { dtMin(va[c], vb[c]), va[c] < vb[c] ? va[1] : vb[1] };
+						const float a1[2] = { dtMax(va[c], vb[c]), va[c] < vb[c] ? vb[1] : va[1] };
+						const float b0[2] = { dtMin(vc[c], vd[c]), vc[c] < vd[c] ? vc[1] : vd[1] };
+						const float b1[2] = { dtMax(vc[c], vd[c]), vc[c] < vd[c] ? vd[1] : vc[1] };
+						const float minx = dtMax(a0[0] + 0.01f, b0[0] + 0.01f);
+						const float maxx = dtMin(a1[0] - 0.01f, b1[0] - 0.01f);
+						if (minx > maxx)
+							continue;
+						const float ad = (a1[1] - a0[1]) / (a1[0] - a0[0]);
+						const float bd = (b1[1] - b0[1]) / (b1[0] - b0[0]);
+						const float dmin = (b0[1] + bd * (minx - b0[0])) - (a0[1] + ad * (minx - a0[0]));
+						const float dmax = (b0[1] + bd * (maxx - b0[0])) - (a0[1] + ad * (maxx - a0[0]));
+						const float score = maxx - minx;
+						if (score > best)
+						{
+							best = score;
+							bdmin = dmin;
+							bdmax = dmax;
+						}
+					}
+					printf("slab %.4f %.4f\n", bdmin, bdmax);
+				}
+				if (getenv("DUMP_LINKGAP"))
+				{
+					// Surface heights of both polygons (detail mesh) at the middle of the portal.
+					const float* va = &tile->verts[poly.verts[l.edge] * 3];
+					const float* vb = &tile->verts[poly.verts[(l.edge + 1) % poly.vertCount] * 3];
+					float mid[3], ca[3], cb[3];
+					dtVlerp(mid, va, vb, (l.bmin + l.bmax) / 510.0f);
+					q->closestPointOnPoly(cnav->getPolyRefBase(tile) | (dtPolyRef)i, mid, ca, 0);
+					q->closestPointOnPoly(l.ref, mid, cb, 0);
+					printf("gap %d,%d p%d -> %d,%d p%d at %.3f %.3f from %.3f to %.3f\n", tile->header->x, tile->header->y, i,
+						   tt->header->x, tt->header->y, static_cast<int>(tp - tt->polys), mid[0], mid[2], ca[1], cb[1]);
+				}
 				if (getenv("DUMP_GEOM"))
 				{
 					const float* va = &tile->verts[poly.verts[l.edge] * 3];
@@ -260,8 +312,6 @@ int main(int argc, char** argv)
 
 	// A fixed set of path queries. The random points depend only on the polygons, which the patch
 	// does not change, so both builds query the same pairs.
-	dtNavMeshQuery* q = dtAllocNavMeshQuery();
-	q->init(nav, 4096);
 	dtQueryFilter filter;
 	if (const char* qs = getenv("QUERY"))
 	{

@@ -32,6 +32,24 @@ diff main.txt fix.txt
 RECAST=main tools/make_images.sh
 ```
 
+## 1 x climb (the change proposed in issue 793)
+
+`results/climb_1x/` compares `main` with a variant that changes only `dtSqr(py*2)` to `dtSqr(py)` in `overlapSlabs`. `tools/analyze_1x.py` checks each link the variant removes: it samples the source mesh 0.15 inside each tile at the middle of the portal and takes the surface closest to each polygon. If the two surfaces are within `walkableClimb`, an agent can step across there ("walkable": a link that should stay). Otherwise it is a ledge or a separate floor ("ledge": correct to remove). It also compares 1000 random path queries per build, and lists links across walkable ground whose end gap exceeds half the climb ("headroom").
+
+- `near_origin.txt`: RecastDemo meshes, tile sizes 8-64, climbs 0.2-1.5 (126 builds).
+- `far_from_origin.txt`: the same meshes moved 100,000 units away (`tools/make_far_meshes.py`), 72 builds.
+- `before_pr476.txt`: Recast at 2b0c244, just before the tile-border rasterization fix (PR 476), 72 builds. Configure with `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` under CMake 4.
+
+```sh
+# 1x variant
+git clone https://github.com/recastnavigation/recastnavigation onex && git -C onex checkout 9f4ce64
+sed -i 's/const float thr = dtSqr(py\*2);/const float thr = dtSqr(py);/' onex/Detour/Source/DetourNavMesh.cpp
+# build it like main above, link tools/bin/linkdump-1x, then per build:
+DUMP_LINKGAP=1 tools/bin/linkdump-main <mesh.obj> <tile> 2.0 0.6 <climb> 1000 > sweep/<mesh>_t<tile>_c<climb>.stock.txt
+DUMP_LINKGAP=1 tools/bin/linkdump-1x   <mesh.obj> <tile> 2.0 0.6 <climb> 1000 > sweep/<mesh>_t<tile>_c<climb>.1x.txt
+python3 tools/analyze_1x.py <dir with mesh.obj files> sweep
+```
+
 The unit tests are in the fix branch: `Tests/Detour/Tests_DetourTileConnection.cpp`, run with `./build/Tests/Tests "[tileconnection]"`.
 
 Setup used: Ubuntu 22.04 (WSL2), GCC 11.4, CMake 4.4, Python 3 with matplotlib 3.10.
