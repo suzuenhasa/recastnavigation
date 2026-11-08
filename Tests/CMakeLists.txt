@@ -18,6 +18,7 @@ target_include_directories(Tests PRIVATE ./Contrib)
 target_sources(Tests PRIVATE 
 	Contrib/catch2/catch_amalgamated.cpp
 	Detour/Tests_Detour.cpp
+	Detour/Tests_DetourTileConnection.cpp
 	DetourCrowd/Tests_DetourPathCorridor.cpp
 	Recast/Tests_Alloc.cpp
 	Recast/Tests_Recast.cpp
